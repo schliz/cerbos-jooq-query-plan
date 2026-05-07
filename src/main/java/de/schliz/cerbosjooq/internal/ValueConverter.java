@@ -9,6 +9,7 @@
 package de.schliz.cerbosjooq.internal;
 
 import com.google.protobuf.Value;
+import java.math.BigInteger;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -60,6 +61,36 @@ public final class ValueConverter {
         if (userCoerce != null) {
             current = userCoerce.apply(current);
         }
+        if (current instanceof Double d && isIntegerType(dt.getType())) {
+            return dt.convert(checkIntegralPrecision(d, dt));
+        }
         return dt.convert(current);
+    }
+
+    private static boolean isIntegerType(Class<?> t) {
+        return t == Long.class
+                || t == long.class
+                || t == Integer.class
+                || t == int.class
+                || t == Short.class
+                || t == short.class
+                || t == Byte.class
+                || t == byte.class
+                || t == BigInteger.class;
+    }
+
+    private static Long checkIntegralPrecision(double raw, DataType<?> dt) {
+        if (Double.isNaN(raw) || Double.isInfinite(raw) || raw != Math.floor(raw)) {
+            throw new IllegalArgumentException(
+                    "Cannot bind non-integral value " + raw + " to integer column " + dt.getName());
+        }
+        if (Math.abs(raw) > 9007199254740992.0) {
+            throw new IllegalArgumentException("Numeric value " + raw + " exceeds 2^53; "
+                    + "Cerbos protobuf encoding uses double-precision floats and "
+                    + "cannot represent integers above this magnitude without precision loss. "
+                    + "Use a string-typed column for opaque ids, or constrain the "
+                    + "policy to compare numeric ids below 2^53.");
+        }
+        return (long) raw;
     }
 }

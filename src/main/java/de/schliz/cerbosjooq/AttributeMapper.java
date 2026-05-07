@@ -57,6 +57,10 @@ public final class AttributeMapper {
         /**
          * Map a Cerbos attribute path to a single jOOQ column.
          *
+         * <p>If the column is an integer type and the policy compares against a value
+         * larger than 2^53, adaptation throws {@link IllegalArgumentException}. See
+         * the README under "Limitations &rarr; Numeric precision" for the rationale.
+         *
          * @param attrPath e.g. {@code request.resource.attr.owner}
          * @param column   the jOOQ field whose data type drives value coercion
          */

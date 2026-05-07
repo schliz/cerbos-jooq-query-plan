@@ -111,6 +111,21 @@ The adapter fails loud:
 There is no silent `falseCondition()` fallback except for an empty `in`
 list and `KIND_ALWAYS_DENIED`, which are well-defined cases.
 
+## Limitations
+
+### Numeric precision
+
+Cerbos's wire format encodes numbers as IEEE 754 doubles. Integer values
+above 2^53 (≈ 9 × 10^18) lose precision in transit and the adapter rejects
+them at bind time with `IllegalArgumentException`. For opaque identifiers
+(user ids, resource ids, external system ids), prefer string columns over
+`BIGINT`. For numeric columns whose values genuinely exceed this range —
+counters, timestamps in nanoseconds, etc. — restructure the policy to
+compare against a string or bucketed column.
+
+The adapter also rejects non-integral doubles bound to integer columns
+(e.g. `1.5` against a `BIGINT`), which would otherwise truncate silently.
+
 ## License
 
 [Mozilla Public License 2.0](./LICENSE). Copyright is retained by the
