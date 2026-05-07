@@ -1,6 +1,6 @@
 package de.schliz.cerbosjooq.internal;
 
-import de.schliz.cerbosjooq.Mapper;
+import de.schliz.cerbosjooq.AttributeMapper;
 import de.schliz.cerbosjooq.RelationMapping;
 
 public record LambdaScope(
@@ -8,7 +8,7 @@ public record LambdaScope(
         RelationMapping primary,
         LambdaScope parent /* nullable */) {
 
-    public Object resolve(String reference, Mapper outer) {
+    public Object resolve(String reference, AttributeMapper outer) {
         throw new UnsupportedOperationException("not implemented");
     }
 }

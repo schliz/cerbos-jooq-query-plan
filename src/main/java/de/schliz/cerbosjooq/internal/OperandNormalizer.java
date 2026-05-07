@@ -3,8 +3,8 @@ package de.schliz.cerbosjooq.internal;
 import java.util.List;
 import dev.cerbos.api.v1.engine.Engine.PlanResourcesFilter.Expression.Operand;
 
-public final class Canonicalize {
-    private Canonicalize() {}
+public final class OperandNormalizer {
+    private OperandNormalizer() {}
 
     public record BinaryOperands(Operand variable, Operand value) {}
 

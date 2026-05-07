@@ -7,17 +7,17 @@ import java.util.function.Function;
 import org.jooq.Field;
 import org.jooq.Table;
 
-public final class Mapper {
+public final class AttributeMapper {
 
-    private final Map<String, MapperEntry> entries;
-    private final Function<String, MapperEntry> fallback; // nullable
+    private final Map<String, MappingEntry> entries;
+    private final Function<String, MappingEntry> fallback; // nullable
 
-    private Mapper(Map<String, MapperEntry> entries, Function<String, MapperEntry> fallback) {
+    private AttributeMapper(Map<String, MappingEntry> entries, Function<String, MappingEntry> fallback) {
         this.entries = Map.copyOf(entries);
         this.fallback = fallback;
     }
 
-    public MapperEntry resolve(String path) {
+    public MappingEntry resolve(String path) {
         throw new UnsupportedOperationException("not implemented");
     }
 
@@ -26,33 +26,33 @@ public final class Mapper {
     }
 
     public static final class Builder {
-        private final Map<String, MapperEntry> entries = new LinkedHashMap<>();
-        private Function<String, MapperEntry> fallback;
+        private final Map<String, MappingEntry> entries = new LinkedHashMap<>();
+        private Function<String, MappingEntry> fallback;
 
         public Builder field(String attrPath, Field<?> column) {
-            entries.put(attrPath, new MapperEntry.FieldRef(column, null));
+            entries.put(attrPath, new MappingEntry.FieldRef(column, null));
             return this;
         }
 
         public Builder field(String attrPath, Field<?> column, Function<Object, Object> coerce) {
-            entries.put(attrPath, new MapperEntry.FieldRef(column, coerce));
+            entries.put(attrPath, new MappingEntry.FieldRef(column, coerce));
             return this;
         }
 
         public Builder relation(String attrPath, Consumer<RelationBuilder> spec) {
             RelationBuilder rb = new RelationBuilder();
             spec.accept(rb);
-            entries.put(attrPath, new MapperEntry.RelationRef(rb.build()));
+            entries.put(attrPath, new MappingEntry.RelationRef(rb.build()));
             return this;
         }
 
-        public Builder fallback(Function<String, MapperEntry> fn) {
+        public Builder fallback(Function<String, MappingEntry> fn) {
             this.fallback = fn;
             return this;
         }
 
-        public Mapper build() {
-            return new Mapper(entries, fallback);
+        public AttributeMapper build() {
+            return new AttributeMapper(entries, fallback);
         }
     }
 
@@ -62,7 +62,7 @@ public final class Mapper {
         private Field<?> sourceColumn;
         private Field<?> targetColumn;
         private Field<?> defaultField;
-        private final Map<String, MapperEntry> fields = new LinkedHashMap<>();
+        private final Map<String, MappingEntry> fields = new LinkedHashMap<>();
 
         public RelationBuilder one(Table<?> table) {
             this.cardinality = RelationMapping.Cardinality.ONE;
@@ -92,19 +92,19 @@ public final class Mapper {
         }
 
         public RelationBuilder field(String subAttr, Field<?> column) {
-            fields.put(subAttr, new MapperEntry.FieldRef(column, null));
+            fields.put(subAttr, new MappingEntry.FieldRef(column, null));
             return this;
         }
 
         public RelationBuilder field(String subAttr, Field<?> column, Function<Object, Object> coerce) {
-            fields.put(subAttr, new MapperEntry.FieldRef(column, coerce));
+            fields.put(subAttr, new MappingEntry.FieldRef(column, coerce));
             return this;
         }
 
         public RelationBuilder relation(String subAttr, Consumer<RelationBuilder> nested) {
             RelationBuilder rb = new RelationBuilder();
             nested.accept(rb);
-            fields.put(subAttr, new MapperEntry.RelationRef(rb.build()));
+            fields.put(subAttr, new MappingEntry.RelationRef(rb.build()));
             return this;
         }
 

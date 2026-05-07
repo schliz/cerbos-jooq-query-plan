@@ -10,7 +10,7 @@ public record RelationMapping(
         Field<?> sourceColumn,
         Field<?> targetColumn,
         Field<?> defaultField, // nullable
-        Map<String, MapperEntry> fields) {
+        Map<String, MappingEntry> fields) {
 
     public enum Cardinality { ONE, MANY }
 }

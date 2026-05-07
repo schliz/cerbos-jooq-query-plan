@@ -2,14 +2,14 @@ package de.schliz.cerbosjooq.internal;
 
 import dev.cerbos.api.v1.engine.Engine.PlanResourcesFilter.Expression.Operand;
 import org.jooq.Condition;
-import de.schliz.cerbosjooq.Mapper;
+import de.schliz.cerbosjooq.AttributeMapper;
 
-public final class Walker {
+public final class OperandVisitor {
 
-    private final Mapper mapper;
+    private final AttributeMapper mapper;
     private LambdaScope scope; // null at top level
 
-    public Walker(Mapper mapper) {
+    public OperandVisitor(AttributeMapper mapper) {
         this.mapper = mapper;
     }
 
