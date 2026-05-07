@@ -69,7 +69,7 @@ public final class OperandVisitor {
             case "isSet" -> walkIsSet(ops, scope);
             case "in" -> walkIn(ops, scope);
             case "contains", "startsWith", "endsWith" -> walkStringOp(op, ops, scope);
-            case "exists" -> walkCollection(op, ops, scope);
+            case "exists", "all", "exists_one" -> walkCollection(op, ops, scope);
             case "hasIntersection" -> walkHasIntersection(ops, scope);
             case "lambda" -> throw new IllegalArgumentException("lambda only valid inside a collection operator");
             case "filter", "map" ->
@@ -348,16 +348,27 @@ public final class OperandVisitor {
 
         return switch (op) {
             case "exists" -> relationExists(rel, body);
+            case "all" ->
+                DSL.notExists(
+                        DSL.selectOne().from(rel.table()).where(joinOf(rel).and(body.not())));
+            case "exists_one" ->
+                DSL.selectCount()
+                        .from(rel.table())
+                        .where(joinOf(rel).and(body))
+                        .asField()
+                        .eq(DSL.inline(1));
             default -> throw new IllegalStateException(op);
         };
     }
 
     private Condition relationExists(RelationMapping rel, Condition inner) {
+        return DSL.exists(DSL.selectOne().from(rel.table()).where(joinOf(rel).and(inner)));
+    }
+
+    private Condition joinOf(RelationMapping rel) {
         @SuppressWarnings({"unchecked", "rawtypes"})
         Field tgt = rel.targetColumn();
-        Field<?> src = rel.sourceColumn();
-        Condition join = tgt.eq(src);
-        return DSL.exists(DSL.selectOne().from(rel.table()).where(join.and(inner)));
+        return tgt.eq(rel.sourceColumn());
     }
 
     private MappingEntry resolve(String path, LambdaScope scope) {

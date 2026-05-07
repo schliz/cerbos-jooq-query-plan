@@ -34,6 +34,8 @@ public final class Validator {
             "startsWith",
             "endsWith",
             "exists",
+            "all",
+            "exists_one",
             "hasIntersection",
             "lambda",
             "map");
