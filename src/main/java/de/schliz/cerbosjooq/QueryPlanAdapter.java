@@ -17,14 +17,45 @@ import dev.cerbos.api.v1.response.Response.PlanResourcesResponse;
 import dev.cerbos.sdk.PlanResourcesResult;
 import org.jooq.Condition;
 
+/**
+ * Entry point for adapting a Cerbos {@code PlanResources} result into a jOOQ
+ * {@link Condition} that callers {@code .and(...)} into their own {@code SELECT}.
+ *
+ * <p>The returned {@link QueryPlanResult} is sealed: {@link QueryPlanResult.AlwaysAllowed}
+ * indicates no filter is required, {@link QueryPlanResult.AlwaysDenied} indicates the
+ * caller should short-circuit (e.g. return an empty result without querying), and
+ * {@link QueryPlanResult.Conditional} carries the dialect-portable {@link Condition}
+ * to attach to the caller's query.
+ *
+ * <p>Adaptation is pure: the same input plan and {@link AttributeMapper} always produce
+ * an equivalent condition. Unknown operators throw {@link UnsupportedOperatorException};
+ * malformed plans, missing mapper entries, and shape errors throw
+ * {@link IllegalArgumentException}.
+ */
 public final class QueryPlanAdapter {
 
     private QueryPlanAdapter() {}
 
+    /**
+     * Adapt a {@link PlanResourcesResult} produced by the Cerbos SDK.
+     *
+     * @param plan   the plan returned from {@code CerbosBlockingClient.plan(...)}
+     * @param mapper resolves Cerbos attribute paths (e.g. {@code request.resource.attr.owner})
+     *               to jOOQ {@link org.jooq.Field}s and relations
+     * @return a sealed {@link QueryPlanResult}
+     * @throws IllegalArgumentException     if the plan is malformed or a mapping is missing
+     * @throws UnsupportedOperatorException if the plan uses an operator not supported by this adapter
+     */
     public static QueryPlanResult adapt(PlanResourcesResult plan, AttributeMapper mapper) {
         return adapt(plan.getRaw(), mapper);
     }
 
+    /**
+     * Adapt a raw {@link PlanResourcesResponse} protobuf message. Useful for testing or for
+     * callers that obtain the response outside the SDK helper.
+     *
+     * @see #adapt(PlanResourcesResult, AttributeMapper)
+     */
     public static QueryPlanResult adapt(PlanResourcesResponse response, AttributeMapper mapper) {
         PlanResourcesFilter filter = response.getFilter();
         return switch (filter.getKind()) {

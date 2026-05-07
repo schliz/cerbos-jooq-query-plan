@@ -40,8 +40,11 @@ public final class OperandVisitor {
             case VARIABLE ->
                 throw new IllegalArgumentException(
                         "Bare variable not valid as a boolean expression: " + operand.getVariable());
-            case VALUE -> throw new IllegalArgumentException("Bare value not valid as a boolean expression");
-            case NODE_NOT_SET -> throw new IllegalArgumentException("Empty operand");
+            case VALUE ->
+                throw new IllegalArgumentException(
+                        "Bare value not valid as a boolean expression: " + operand.getValue());
+            case NODE_NOT_SET ->
+                throw new IllegalArgumentException("Operand has no node set (NODE_NOT_SET); malformed plan");
         };
     }
 
@@ -56,13 +59,13 @@ public final class OperandVisitor {
                 yield acc;
             }
             case "or" -> {
-                if (ops.isEmpty()) throw new IllegalArgumentException("empty or");
+                if (ops.isEmpty()) throw new IllegalArgumentException("'or' requires at least 1 operand, got 0");
                 Condition acc = walk(ops.get(0), scope);
                 for (int i = 1; i < ops.size(); i++) acc = acc.or(walk(ops.get(i), scope));
                 yield acc;
             }
             case "not" -> {
-                if (ops.size() != 1) throw new IllegalArgumentException("'not' requires 1 operand");
+                if (ops.size() != 1) throw new IllegalArgumentException("'not' requires 1 operand, got " + ops.size());
                 yield walk(ops.get(0), scope).not();
             }
             case "eq", "ne", "lt", "le", "gt", "ge" -> walkComparison(op, ops, scope);

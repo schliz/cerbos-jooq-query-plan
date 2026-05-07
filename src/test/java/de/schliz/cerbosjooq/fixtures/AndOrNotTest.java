@@ -107,7 +107,7 @@ class AndOrNotTest {
         var plan = conditional(expr("or"));
         assertThatThrownBy(() -> QueryPlanAdapter.adapt(plan, MAPPER))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("empty or");
+                .hasMessageContaining("'or' requires at least 1 operand");
     }
 
     /** Empty {@code and} collapses to {@code DSL.noCondition()}, which jOOQ omits from the rendered WHERE. */
