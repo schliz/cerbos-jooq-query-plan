@@ -18,8 +18,21 @@ public final class Validator {
 
     private Validator() {}
 
-    private static final Set<String> SUPPORTED =
-            Set.of("and", "or", "not", "eq", "ne", "lt", "le", "gt", "ge", "isSet");
+    private static final Set<String> SUPPORTED = Set.of(
+            "and",
+            "or",
+            "not",
+            "eq",
+            "ne",
+            "lt",
+            "le",
+            "gt",
+            "ge",
+            "isSet",
+            "in",
+            "contains",
+            "startsWith",
+            "endsWith");
 
     public static void check(Operand op) {
         if (op.getNodeCase() == NodeCase.EXPRESSION) {

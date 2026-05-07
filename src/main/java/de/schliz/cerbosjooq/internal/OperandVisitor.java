@@ -13,6 +13,8 @@ import de.schliz.cerbosjooq.MappingEntry;
 import de.schliz.cerbosjooq.UnsupportedOperatorException;
 import dev.cerbos.api.v1.engine.Engine.PlanResourcesFilter.Expression;
 import dev.cerbos.api.v1.engine.Engine.PlanResourcesFilter.Expression.Operand;
+import dev.cerbos.api.v1.engine.Engine.PlanResourcesFilter.Expression.Operand.NodeCase;
+import java.util.ArrayList;
 import java.util.List;
 import org.jooq.Condition;
 import org.jooq.DataType;
@@ -60,6 +62,8 @@ public final class OperandVisitor {
             }
             case "eq", "ne", "lt", "le", "gt", "ge" -> walkComparison(op, ops);
             case "isSet" -> walkIsSet(ops);
+            case "in" -> walkIn(ops);
+            case "contains", "startsWith", "endsWith" -> walkStringOp(op, ops);
             default -> throw new UnsupportedOperatorException(op);
         };
     }
@@ -105,6 +109,54 @@ public final class OperandVisitor {
             throw new IllegalArgumentException("isSet requires a boolean value");
         }
         return b ? column.isNotNull() : column.isNull();
+    }
+
+    private Condition walkIn(List<Operand> ops) {
+        if (ops.size() != 2) {
+            throw new IllegalArgumentException("'in' requires 2 operands, got " + ops.size());
+        }
+        Operand left = ops.get(0);
+        Operand right = ops.get(1);
+
+        if (left.getNodeCase() == NodeCase.VARIABLE && right.getNodeCase() == NodeCase.VALUE) {
+            MappingEntry.FieldRef fr = resolveField(left.getVariable());
+            Object raw = ValueConverter.toJava(right.getValue());
+            List<?> values = (raw instanceof List<?> l) ? l : List.of(raw);
+            if (values.isEmpty()) return DSL.falseCondition();
+
+            DataType<?> dt = fr.column().getDataType();
+            List<Object> coerced = new ArrayList<>(values.size());
+            for (Object v : values) {
+                coerced.add(ValueConverter.coerce(v, dt, fr.coerce()));
+            }
+
+            @SuppressWarnings({"unchecked", "rawtypes"})
+            Field f = fr.column();
+            return f.in(coerced);
+        }
+
+        if (left.getNodeCase() == NodeCase.VALUE && right.getNodeCase() == NodeCase.VARIABLE) {
+            throw new UnsupportedOperatorException("in (value-in-relation form lands in Phase 5)");
+        }
+
+        throw new IllegalArgumentException("Unsupported 'in' operand shapes");
+    }
+
+    private Condition walkStringOp(String op, List<Operand> ops) {
+        OperandNormalizer.BinaryOperands c = OperandNormalizer.canonicalize(ops, op);
+        MappingEntry.FieldRef fr = resolveField(c.variable().getVariable());
+        Object raw = ValueConverter.toJava(c.value().getValue());
+        if (!(raw instanceof String s)) {
+            throw new IllegalArgumentException(op + " requires a string value");
+        }
+        @SuppressWarnings("unchecked")
+        Field<String> col = (Field<String>) fr.column();
+        return switch (op) {
+            case "contains" -> col.contains(s);
+            case "startsWith" -> col.startsWith(s);
+            case "endsWith" -> col.endsWith(s);
+            default -> throw new IllegalStateException(op);
+        };
     }
 
     private MappingEntry.FieldRef resolveField(String path) {
