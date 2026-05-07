@@ -35,7 +35,8 @@ public final class Validator {
             "endsWith",
             "exists",
             "hasIntersection",
-            "lambda");
+            "lambda",
+            "map");
 
     public static void check(Operand op) {
         if (op.getNodeCase() == NodeCase.EXPRESSION) {

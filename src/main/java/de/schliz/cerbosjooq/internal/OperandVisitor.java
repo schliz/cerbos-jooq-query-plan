@@ -203,7 +203,7 @@ public final class OperandVisitor {
 
         if (left.getNodeCase() == NodeCase.EXPRESSION
                 && "map".equals(left.getExpression().getOperator())) {
-            throw new UnsupportedOperatorException("hasIntersection over map (Phase 6)");
+            return walkHasIntersectionWithMap(left.getExpression(), right, scope);
         }
         if (left.getNodeCase() != NodeCase.VARIABLE) {
             throw new IllegalArgumentException("'hasIntersection' requires a variable left operand");
@@ -236,6 +236,74 @@ public final class OperandVisitor {
 
         @SuppressWarnings({"unchecked", "rawtypes"})
         Field f = defField;
+        return relationExists(rel, f.in(coerced));
+    }
+
+    private Condition walkHasIntersectionWithMap(Expression mapExpr, Operand right, LambdaScope scope) {
+        List<Operand> mapOps = mapExpr.getOperandsList();
+        if (mapOps.size() != 2) {
+            throw new IllegalArgumentException("'map' requires 2 operands, got " + mapOps.size());
+        }
+        Operand relOperand = mapOps.get(0);
+        Operand lambdaOperand = mapOps.get(1);
+
+        if (relOperand.getNodeCase() != NodeCase.VARIABLE) {
+            throw new IllegalArgumentException("'map' requires a variable as its first operand");
+        }
+        if (lambdaOperand.getNodeCase() != NodeCase.EXPRESSION
+                || !"lambda".equals(lambdaOperand.getExpression().getOperator())) {
+            throw new IllegalArgumentException("'map' requires a lambda as its second operand");
+        }
+
+        Expression lambda = lambdaOperand.getExpression();
+        List<Operand> lambdaOps = lambda.getOperandsList();
+        if (lambdaOps.size() != 2) {
+            throw new IllegalArgumentException(
+                    "lambda must have shape [body, variable], got " + lambdaOps.size() + " operands");
+        }
+        Operand bodyOp = lambdaOps.get(0);
+        Operand varOp = lambdaOps.get(1);
+        if (varOp.getNodeCase() != NodeCase.VARIABLE) {
+            throw new IllegalArgumentException(
+                    "lambda variable operand must be a VARIABLE node, got " + varOp.getNodeCase());
+        }
+        if (bodyOp.getNodeCase() != NodeCase.VARIABLE) {
+            throw new IllegalArgumentException(
+                    "'map' projection lambda body must be a VARIABLE node, got " + bodyOp.getNodeCase());
+        }
+        String varName = varOp.getVariable();
+        String bodyPath = bodyOp.getVariable();
+
+        MappingEntry entry = resolve(relOperand.getVariable(), scope);
+        if (!(entry instanceof MappingEntry.RelationRef rr)) {
+            throw new IllegalArgumentException(
+                    "'map' requires '" + relOperand.getVariable() + "' to be a relation mapping");
+        }
+        RelationMapping rel = rr.mapping();
+
+        LambdaScope inner = new LambdaScope(varName, rel, scope);
+        MappingEntry projected = inner.resolve(bodyPath, mapper);
+        if (!(projected instanceof MappingEntry.FieldRef projectedFr)) {
+            throw new IllegalArgumentException(
+                    "'map' projection '" + bodyPath + "' must resolve to a field, not a relation");
+        }
+        Field<?> projectedField = projectedFr.column();
+
+        if (right.getNodeCase() != NodeCase.VALUE) {
+            throw new IllegalArgumentException("'hasIntersection' requires a literal-list right operand");
+        }
+        Object raw = ValueConverter.toJava(right.getValue());
+        List<?> values = (raw instanceof List<?> l) ? l : List.of(raw);
+        if (values.isEmpty()) return DSL.falseCondition();
+
+        DataType<?> dt = projectedField.getDataType();
+        List<Object> coerced = new ArrayList<>(values.size());
+        for (Object v : values) {
+            coerced.add(ValueConverter.coerce(v, dt, projectedFr.coerce()));
+        }
+
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        Field f = projectedField;
         return relationExists(rel, f.in(coerced));
     }
 
