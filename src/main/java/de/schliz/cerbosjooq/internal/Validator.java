@@ -32,7 +32,10 @@ public final class Validator {
             "in",
             "contains",
             "startsWith",
-            "endsWith");
+            "endsWith",
+            "exists",
+            "hasIntersection",
+            "lambda");
 
     public static void check(Operand op) {
         if (op.getNodeCase() == NodeCase.EXPRESSION) {

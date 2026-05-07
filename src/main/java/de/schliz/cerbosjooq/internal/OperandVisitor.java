@@ -10,6 +10,7 @@ package de.schliz.cerbosjooq.internal;
 
 import de.schliz.cerbosjooq.AttributeMapper;
 import de.schliz.cerbosjooq.MappingEntry;
+import de.schliz.cerbosjooq.RelationMapping;
 import de.schliz.cerbosjooq.UnsupportedOperatorException;
 import dev.cerbos.api.v1.engine.Engine.PlanResourcesFilter.Expression;
 import dev.cerbos.api.v1.engine.Engine.PlanResourcesFilter.Expression.Operand;
@@ -30,8 +31,12 @@ public final class OperandVisitor {
     }
 
     public Condition walk(Operand operand) {
+        return walk(operand, null);
+    }
+
+    private Condition walk(Operand operand, LambdaScope scope) {
         return switch (operand.getNodeCase()) {
-            case EXPRESSION -> walkExpression(operand.getExpression());
+            case EXPRESSION -> walkExpression(operand.getExpression(), scope);
             case VARIABLE ->
                 throw new IllegalArgumentException(
                         "Bare variable not valid as a boolean expression: " + operand.getVariable());
@@ -40,39 +45,44 @@ public final class OperandVisitor {
         };
     }
 
-    private Condition walkExpression(Expression e) {
+    private Condition walkExpression(Expression e, LambdaScope scope) {
         String op = e.getOperator();
         List<Operand> ops = e.getOperandsList();
         return switch (op) {
             case "and" -> {
                 if (ops.isEmpty()) yield DSL.noCondition();
-                Condition acc = walk(ops.get(0));
-                for (int i = 1; i < ops.size(); i++) acc = acc.and(walk(ops.get(i)));
+                Condition acc = walk(ops.get(0), scope);
+                for (int i = 1; i < ops.size(); i++) acc = acc.and(walk(ops.get(i), scope));
                 yield acc;
             }
             case "or" -> {
                 if (ops.isEmpty()) throw new IllegalArgumentException("empty or");
-                Condition acc = walk(ops.get(0));
-                for (int i = 1; i < ops.size(); i++) acc = acc.or(walk(ops.get(i)));
+                Condition acc = walk(ops.get(0), scope);
+                for (int i = 1; i < ops.size(); i++) acc = acc.or(walk(ops.get(i), scope));
                 yield acc;
             }
             case "not" -> {
                 if (ops.size() != 1) throw new IllegalArgumentException("'not' requires 1 operand");
-                yield walk(ops.get(0)).not();
+                yield walk(ops.get(0), scope).not();
             }
-            case "eq", "ne", "lt", "le", "gt", "ge" -> walkComparison(op, ops);
-            case "isSet" -> walkIsSet(ops);
-            case "in" -> walkIn(ops);
-            case "contains", "startsWith", "endsWith" -> walkStringOp(op, ops);
+            case "eq", "ne", "lt", "le", "gt", "ge" -> walkComparison(op, ops, scope);
+            case "isSet" -> walkIsSet(ops, scope);
+            case "in" -> walkIn(ops, scope);
+            case "contains", "startsWith", "endsWith" -> walkStringOp(op, ops, scope);
+            case "exists" -> walkCollection(op, ops, scope);
+            case "hasIntersection" -> walkHasIntersection(ops, scope);
+            case "lambda" -> throw new IllegalArgumentException("lambda only valid inside a collection operator");
+            case "filter", "map" ->
+                throw new IllegalArgumentException("'" + op + "' returns a collection, not a boolean");
             default -> throw new UnsupportedOperatorException(op);
         };
     }
 
-    private Condition walkComparison(String op, List<Operand> ops) {
+    private Condition walkComparison(String op, List<Operand> ops, LambdaScope scope) {
         OperandNormalizer.BinaryOperands canonical = OperandNormalizer.canonicalize(ops, op);
         String effective = canonical.flipped() ? OperandNormalizer.flipCompare(op) : op;
 
-        MappingEntry.FieldRef fr = resolveField(canonical.variable().getVariable());
+        MappingEntry.FieldRef fr = resolveField(canonical.variable().getVariable(), scope);
         Field<?> column = fr.column();
         Object raw = ValueConverter.toJava(canonical.value().getValue());
 
@@ -101,9 +111,9 @@ public final class OperandVisitor {
         };
     }
 
-    private Condition walkIsSet(List<Operand> ops) {
+    private Condition walkIsSet(List<Operand> ops, LambdaScope scope) {
         OperandNormalizer.BinaryOperands c = OperandNormalizer.canonicalize(ops, "isSet");
-        Field<?> column = resolveField(c.variable().getVariable()).column();
+        Field<?> column = resolveField(c.variable().getVariable(), scope).column();
         Object raw = ValueConverter.toJava(c.value().getValue());
         if (!(raw instanceof Boolean b)) {
             throw new IllegalArgumentException("isSet requires a boolean value");
@@ -111,40 +121,9 @@ public final class OperandVisitor {
         return b ? column.isNotNull() : column.isNull();
     }
 
-    private Condition walkIn(List<Operand> ops) {
-        if (ops.size() != 2) {
-            throw new IllegalArgumentException("'in' requires 2 operands, got " + ops.size());
-        }
-        Operand left = ops.get(0);
-        Operand right = ops.get(1);
-
-        if (left.getNodeCase() == NodeCase.VARIABLE && right.getNodeCase() == NodeCase.VALUE) {
-            MappingEntry.FieldRef fr = resolveField(left.getVariable());
-            Object raw = ValueConverter.toJava(right.getValue());
-            List<?> values = (raw instanceof List<?> l) ? l : List.of(raw);
-            if (values.isEmpty()) return DSL.falseCondition();
-
-            DataType<?> dt = fr.column().getDataType();
-            List<Object> coerced = new ArrayList<>(values.size());
-            for (Object v : values) {
-                coerced.add(ValueConverter.coerce(v, dt, fr.coerce()));
-            }
-
-            @SuppressWarnings({"unchecked", "rawtypes"})
-            Field f = fr.column();
-            return f.in(coerced);
-        }
-
-        if (left.getNodeCase() == NodeCase.VALUE && right.getNodeCase() == NodeCase.VARIABLE) {
-            throw new UnsupportedOperatorException("in (value-in-relation form lands in Phase 5)");
-        }
-
-        throw new IllegalArgumentException("Unsupported 'in' operand shapes");
-    }
-
-    private Condition walkStringOp(String op, List<Operand> ops) {
+    private Condition walkStringOp(String op, List<Operand> ops, LambdaScope scope) {
         OperandNormalizer.BinaryOperands c = OperandNormalizer.canonicalize(ops, op);
-        MappingEntry.FieldRef fr = resolveField(c.variable().getVariable());
+        MappingEntry.FieldRef fr = resolveField(c.variable().getVariable(), scope);
         Object raw = ValueConverter.toJava(c.value().getValue());
         if (!(raw instanceof String s)) {
             throw new IllegalArgumentException(op + " requires a string value");
@@ -159,13 +138,171 @@ public final class OperandVisitor {
         };
     }
 
-    private MappingEntry.FieldRef resolveField(String path) {
-        MappingEntry entry = mapper.resolve(path);
+    private Condition walkIn(List<Operand> ops, LambdaScope scope) {
+        if (ops.size() != 2) {
+            throw new IllegalArgumentException("'in' requires 2 operands, got " + ops.size());
+        }
+        Operand left = ops.get(0);
+        Operand right = ops.get(1);
+
+        if (left.getNodeCase() == NodeCase.VARIABLE && right.getNodeCase() == NodeCase.VALUE) {
+            MappingEntry entry = resolve(left.getVariable(), scope);
+            if (entry instanceof MappingEntry.FieldRef fr) {
+                Object raw = ValueConverter.toJava(right.getValue());
+                List<?> values = (raw instanceof List<?> l) ? l : List.of(raw);
+                if (values.isEmpty()) return DSL.falseCondition();
+
+                DataType<?> dt = fr.column().getDataType();
+                List<Object> coerced = new ArrayList<>(values.size());
+                for (Object v : values) {
+                    coerced.add(ValueConverter.coerce(v, dt, fr.coerce()));
+                }
+
+                @SuppressWarnings({"unchecked", "rawtypes"})
+                Field f = fr.column();
+                return f.in(coerced);
+            }
+            throw new IllegalArgumentException(
+                    "'in' with a relation on the left is not supported; use hasIntersection");
+        }
+
+        if (left.getNodeCase() == NodeCase.VALUE && right.getNodeCase() == NodeCase.VARIABLE) {
+            MappingEntry entry = resolve(right.getVariable(), scope);
+            if (entry instanceof MappingEntry.RelationRef rr) {
+                return walkValueInRelation(left, rr.mapping(), right.getVariable());
+            }
+            throw new IllegalArgumentException(
+                    "'value in attr' requires '" + right.getVariable() + "' to be a relation mapping");
+        }
+
+        throw new IllegalArgumentException("Unsupported 'in' operand shapes");
+    }
+
+    private Condition walkValueInRelation(Operand value, RelationMapping rel, String path) {
+        if (rel.defaultField() == null) {
+            throw new IllegalArgumentException(
+                    "'value in " + path + "' requires .targetField(...) on the relation mapping");
+        }
+        Object raw = ValueConverter.toJava(value.getValue());
+        Field<?> defField = rel.defaultField();
+        DataType<?> dt = defField.getDataType();
+        Object coerced = ValueConverter.coerce(raw, dt, null);
+        Field<?> bound = DSL.val(coerced, dt);
+
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        Field f = defField;
+        return relationExists(rel, f.eq(bound));
+    }
+
+    private Condition walkHasIntersection(List<Operand> ops, LambdaScope scope) {
+        if (ops.size() != 2) {
+            throw new IllegalArgumentException("'hasIntersection' requires 2 operands, got " + ops.size());
+        }
+        Operand left = ops.get(0);
+        Operand right = ops.get(1);
+
+        if (left.getNodeCase() == NodeCase.EXPRESSION
+                && "map".equals(left.getExpression().getOperator())) {
+            throw new UnsupportedOperatorException("hasIntersection over map (Phase 6)");
+        }
+        if (left.getNodeCase() != NodeCase.VARIABLE) {
+            throw new IllegalArgumentException("'hasIntersection' requires a variable left operand");
+        }
+        if (right.getNodeCase() != NodeCase.VALUE) {
+            throw new IllegalArgumentException("'hasIntersection' requires a literal-list right operand");
+        }
+
+        MappingEntry entry = resolve(left.getVariable(), scope);
+        if (!(entry instanceof MappingEntry.RelationRef rr)) {
+            throw new IllegalArgumentException(
+                    "'hasIntersection' requires '" + left.getVariable() + "' to be a relation mapping");
+        }
+        RelationMapping rel = rr.mapping();
+        if (rel.defaultField() == null) {
+            throw new IllegalArgumentException("'hasIntersection' on '" + left.getVariable()
+                    + "' requires .targetField(...) on the relation mapping");
+        }
+
+        Object raw = ValueConverter.toJava(right.getValue());
+        List<?> values = (raw instanceof List<?> l) ? l : List.of(raw);
+        if (values.isEmpty()) return DSL.falseCondition();
+
+        Field<?> defField = rel.defaultField();
+        DataType<?> dt = defField.getDataType();
+        List<Object> coerced = new ArrayList<>(values.size());
+        for (Object v : values) {
+            coerced.add(ValueConverter.coerce(v, dt, null));
+        }
+
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        Field f = defField;
+        return relationExists(rel, f.in(coerced));
+    }
+
+    private Condition walkCollection(String op, List<Operand> ops, LambdaScope scope) {
+        if (ops.size() != 2) {
+            throw new IllegalArgumentException("'" + op + "' requires 2 operands, got " + ops.size());
+        }
+        Operand relOperand = ops.get(0);
+        Operand lambdaOperand = ops.get(1);
+
+        if (relOperand.getNodeCase() != NodeCase.VARIABLE) {
+            throw new IllegalArgumentException("'" + op + "' requires a variable as its first operand");
+        }
+        if (lambdaOperand.getNodeCase() != NodeCase.EXPRESSION
+                || !"lambda".equals(lambdaOperand.getExpression().getOperator())) {
+            throw new IllegalArgumentException("'" + op + "' requires a lambda as its second operand");
+        }
+
+        Expression lambda = lambdaOperand.getExpression();
+        List<Operand> lambdaOps = lambda.getOperandsList();
+        if (lambdaOps.size() != 2) {
+            throw new IllegalArgumentException(
+                    "lambda must have shape [body, variable], got " + lambdaOps.size() + " operands");
+        }
+        Operand bodyOp = lambdaOps.get(0);
+        Operand varOp = lambdaOps.get(1);
+        if (varOp.getNodeCase() != NodeCase.VARIABLE) {
+            throw new IllegalArgumentException(
+                    "lambda variable operand must be a VARIABLE node, got " + varOp.getNodeCase());
+        }
+        String varName = varOp.getVariable();
+
+        MappingEntry entry = resolve(relOperand.getVariable(), scope);
+        if (!(entry instanceof MappingEntry.RelationRef rr)) {
+            throw new IllegalArgumentException(
+                    "'" + op + "' requires '" + relOperand.getVariable() + "' to be a relation mapping");
+        }
+        RelationMapping rel = rr.mapping();
+
+        LambdaScope inner = new LambdaScope(varName, rel, scope);
+        Condition body = walk(bodyOp, inner);
+
+        return switch (op) {
+            case "exists" -> relationExists(rel, body);
+            default -> throw new IllegalStateException(op);
+        };
+    }
+
+    private Condition relationExists(RelationMapping rel, Condition inner) {
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        Field tgt = rel.targetColumn();
+        Field<?> src = rel.sourceColumn();
+        Condition join = tgt.eq(src);
+        return DSL.exists(DSL.selectOne().from(rel.table()).where(join.and(inner)));
+    }
+
+    private MappingEntry resolve(String path, LambdaScope scope) {
+        if (scope != null) return scope.resolve(path, mapper);
+        return mapper.resolve(path);
+    }
+
+    private MappingEntry.FieldRef resolveField(String path, LambdaScope scope) {
+        MappingEntry entry = resolve(path, scope);
         if (entry instanceof MappingEntry.FieldRef fr) {
             return fr;
         }
         throw new IllegalArgumentException(
-                "Path '" + path + "' resolves to a relation; scalar comparison requires a field. "
-                        + "Relation handling lands in a later phase.");
+                "Path '" + path + "' resolves to a relation; scalar comparison requires a field.");
     }
 }
