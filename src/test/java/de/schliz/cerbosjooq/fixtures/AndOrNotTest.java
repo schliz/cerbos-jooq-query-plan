@@ -1,3 +1,11 @@
+/*
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+ *
+ * Copyright (c) 2026-Present Christian Schliz <opensource@foxat.de>
+ */
+ 
 package de.schliz.cerbosjooq.fixtures;
 
 import static de.schliz.cerbosjooq.Plans.conditional;
@@ -18,21 +26,22 @@ class AndOrNotTest {
 
     private static final AttributeMapper MAPPER = AttributeMapper.builder()
             .field("request.resource.attr.status", TestSchema.RESOURCES_STATUS)
-            .field("request.resource.attr.dept",   TestSchema.RESOURCES_DEPT)
+            .field("request.resource.attr.dept", TestSchema.RESOURCES_DEPT)
             .field("request.resource.attr.priority", TestSchema.RESOURCES_PRIO)
             .build();
 
     @Test
     void andOf_two_eqs() {
-        var plan = conditional(expr("and",
+        var plan = conditional(expr(
+                "and",
                 expr("eq", variable("request.resource.attr.status"), value("OPEN")),
-                expr("eq", variable("request.resource.attr.dept"),   value("eng"))));
+                expr("eq", variable("request.resource.attr.dept"), value("eng"))));
 
         var result = QueryPlanAdapter.adapt(plan, MAPPER);
 
         assertThat(result).isInstanceOfSatisfying(QueryPlanResult.Conditional.class, c -> {
-            String sql = TestSchema.h2().renderInlined(
-                    DSL.selectFrom(TestSchema.RESOURCES).where(c.condition()));
+            String sql = TestSchema.h2()
+                    .renderInlined(DSL.selectFrom(TestSchema.RESOURCES).where(c.condition()));
             assertThat(sql).contains("\"resources\".\"status\" = 'OPEN'");
             assertThat(sql).contains("\"resources\".\"department\" = 'eng'");
             assertThat(sql).contains(" and ");
@@ -41,15 +50,16 @@ class AndOrNotTest {
 
     @Test
     void orOf_two_eqs() {
-        var plan = conditional(expr("or",
+        var plan = conditional(expr(
+                "or",
                 expr("eq", variable("request.resource.attr.status"), value("OPEN")),
                 expr("eq", variable("request.resource.attr.status"), value("PENDING"))));
 
         var result = QueryPlanAdapter.adapt(plan, MAPPER);
 
         assertThat(result).isInstanceOfSatisfying(QueryPlanResult.Conditional.class, c -> {
-            String sql = TestSchema.h2().renderInlined(
-                    DSL.selectFrom(TestSchema.RESOURCES).where(c.condition()));
+            String sql = TestSchema.h2()
+                    .renderInlined(DSL.selectFrom(TestSchema.RESOURCES).where(c.condition()));
             assertThat(sql).contains(" or ");
             assertThat(sql).contains("'OPEN'");
             assertThat(sql).contains("'PENDING'");
@@ -58,14 +68,13 @@ class AndOrNotTest {
 
     @Test
     void notOf_eq() {
-        var plan = conditional(expr("not",
-                expr("eq", variable("request.resource.attr.status"), value("OPEN"))));
+        var plan = conditional(expr("not", expr("eq", variable("request.resource.attr.status"), value("OPEN"))));
 
         var result = QueryPlanAdapter.adapt(plan, MAPPER);
 
         assertThat(result).isInstanceOfSatisfying(QueryPlanResult.Conditional.class, c -> {
-            String sql = TestSchema.h2().renderInlined(
-                    DSL.selectFrom(TestSchema.RESOURCES).where(c.condition()));
+            String sql = TestSchema.h2()
+                    .renderInlined(DSL.selectFrom(TestSchema.RESOURCES).where(c.condition()));
             assertThat(sql).contains("not (");
             assertThat(sql).contains("\"resources\".\"status\" = 'OPEN'");
         });
@@ -73,18 +82,19 @@ class AndOrNotTest {
 
     @Test
     void nested_and_or_not() {
-        var plan = conditional(expr("and",
-                expr("or",
+        var plan = conditional(expr(
+                "and",
+                expr(
+                        "or",
                         expr("eq", variable("request.resource.attr.status"), value("OPEN")),
                         expr("eq", variable("request.resource.attr.status"), value("PENDING"))),
-                expr("not",
-                        expr("eq", variable("request.resource.attr.dept"), value("legal")))));
+                expr("not", expr("eq", variable("request.resource.attr.dept"), value("legal")))));
 
         var result = QueryPlanAdapter.adapt(plan, MAPPER);
 
         assertThat(result).isInstanceOfSatisfying(QueryPlanResult.Conditional.class, c -> {
-            String sql = TestSchema.h2().renderInlined(
-                    DSL.selectFrom(TestSchema.RESOURCES).where(c.condition()));
+            String sql = TestSchema.h2()
+                    .renderInlined(DSL.selectFrom(TestSchema.RESOURCES).where(c.condition()));
             assertThat(sql).contains(" or ");
             assertThat(sql).contains(" and ");
             assertThat(sql).contains("not (");
@@ -106,8 +116,8 @@ class AndOrNotTest {
         var plan = conditional(expr("and"));
         var result = QueryPlanAdapter.adapt(plan, MAPPER);
         assertThat(result).isInstanceOfSatisfying(QueryPlanResult.Conditional.class, c -> {
-            String sql = TestSchema.h2().renderInlined(
-                    DSL.selectFrom(TestSchema.RESOURCES).where(c.condition()));
+            String sql = TestSchema.h2()
+                    .renderInlined(DSL.selectFrom(TestSchema.RESOURCES).where(c.condition()));
             assertThat(sql).doesNotContain("where");
         });
     }

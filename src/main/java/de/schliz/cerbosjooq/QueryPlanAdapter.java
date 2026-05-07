@@ -1,3 +1,11 @@
+/*
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+ *
+ * Copyright (c) 2026-Present Christian Schliz <opensource@foxat.de>
+ */
+ 
 package de.schliz.cerbosjooq;
 
 import de.schliz.cerbosjooq.internal.OperandVisitor;
@@ -21,8 +29,8 @@ public final class QueryPlanAdapter {
         PlanResourcesFilter filter = response.getFilter();
         return switch (filter.getKind()) {
             case KIND_ALWAYS_ALLOWED -> new QueryPlanResult.AlwaysAllowed();
-            case KIND_ALWAYS_DENIED  -> new QueryPlanResult.AlwaysDenied();
-            case KIND_CONDITIONAL    -> {
+            case KIND_ALWAYS_DENIED -> new QueryPlanResult.AlwaysDenied();
+            case KIND_CONDITIONAL -> {
                 Operand cond = filter.getCondition();
                 if (cond.getNodeCase() == NodeCase.NODE_NOT_SET) {
                     throw new IllegalArgumentException("Conditional plan has no condition");
@@ -32,7 +40,7 @@ public final class QueryPlanAdapter {
                 yield new QueryPlanResult.Conditional(c);
             }
             case KIND_UNSPECIFIED, UNRECOGNIZED ->
-                    throw new IllegalArgumentException("Unknown filter kind: " + filter.getKind());
+                throw new IllegalArgumentException("Unknown filter kind: " + filter.getKind());
         };
     }
 }

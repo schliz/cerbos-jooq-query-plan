@@ -1,3 +1,11 @@
+/*
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+ *
+ * Copyright (c) 2026-Present Christian Schliz <opensource@foxat.de>
+ */
+ 
 package de.schliz.cerbosjooq.internal;
 
 import com.google.protobuf.Value;
@@ -19,11 +27,11 @@ public final class ValueConverter {
 
     public static Object toJava(Value v) {
         return switch (v.getKindCase()) {
-            case NULL_VALUE   -> null;
-            case BOOL_VALUE   -> v.getBoolValue();
+            case NULL_VALUE -> null;
+            case BOOL_VALUE -> v.getBoolValue();
             case NUMBER_VALUE -> v.getNumberValue(); // Double — do not narrow
             case STRING_VALUE -> v.getStringValue();
-            case LIST_VALUE   -> {
+            case LIST_VALUE -> {
                 List<Object> out = new ArrayList<>(v.getListValue().getValuesCount());
                 for (Value e : v.getListValue().getValuesList()) {
                     out.add(toJava(e));
@@ -43,11 +51,11 @@ public final class ValueConverter {
         Object current = raw;
         if (current instanceof String s) {
             Class<?> t = dt.getType();
-            if (t == LocalDate.class)           current = LocalDate.parse(s);
-            else if (t == LocalDateTime.class)  current = LocalDateTime.parse(s);
+            if (t == LocalDate.class) current = LocalDate.parse(s);
+            else if (t == LocalDateTime.class) current = LocalDateTime.parse(s);
             else if (t == OffsetDateTime.class) current = OffsetDateTime.parse(s);
-            else if (t == Instant.class)        current = Instant.parse(s);
-            else if (t == UUID.class)           current = UUID.fromString(s);
+            else if (t == Instant.class) current = Instant.parse(s);
+            else if (t == UUID.class) current = UUID.fromString(s);
         }
         if (userCoerce != null) {
             current = userCoerce.apply(current);

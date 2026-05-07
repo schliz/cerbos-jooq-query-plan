@@ -1,3 +1,11 @@
+/*
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+ *
+ * Copyright (c) 2026-Present Christian Schliz <opensource@foxat.de>
+ */
+ 
 package de.schliz.cerbosjooq;
 
 import com.google.protobuf.ListValue;
@@ -17,15 +25,13 @@ public final class Plans {
 
     public static PlanResourcesResponse alwaysAllowed() {
         return PlanResourcesResponse.newBuilder()
-                .setFilter(PlanResourcesFilter.newBuilder()
-                        .setKind(PlanResourcesFilter.Kind.KIND_ALWAYS_ALLOWED))
+                .setFilter(PlanResourcesFilter.newBuilder().setKind(PlanResourcesFilter.Kind.KIND_ALWAYS_ALLOWED))
                 .build();
     }
 
     public static PlanResourcesResponse alwaysDenied() {
         return PlanResourcesResponse.newBuilder()
-                .setFilter(PlanResourcesFilter.newBuilder()
-                        .setKind(PlanResourcesFilter.Kind.KIND_ALWAYS_DENIED))
+                .setFilter(PlanResourcesFilter.newBuilder().setKind(PlanResourcesFilter.Kind.KIND_ALWAYS_DENIED))
                 .build();
     }
 
@@ -40,8 +46,7 @@ public final class Plans {
     /** Build a conditional plan with no condition set (validation edge case). */
     public static PlanResourcesResponse conditionalEmpty() {
         return PlanResourcesResponse.newBuilder()
-                .setFilter(PlanResourcesFilter.newBuilder()
-                        .setKind(PlanResourcesFilter.Kind.KIND_CONDITIONAL))
+                .setFilter(PlanResourcesFilter.newBuilder().setKind(PlanResourcesFilter.Kind.KIND_CONDITIONAL))
                 .build();
     }
 

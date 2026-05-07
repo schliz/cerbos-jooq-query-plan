@@ -1,3 +1,11 @@
+/*
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+ *
+ * Copyright (c) 2026-Present Christian Schliz <opensource@foxat.de>
+ */
+ 
 package de.schliz.cerbosjooq.internal;
 
 import de.schliz.cerbosjooq.AttributeMapper;
@@ -5,7 +13,6 @@ import de.schliz.cerbosjooq.MappingEntry;
 import de.schliz.cerbosjooq.UnsupportedOperatorException;
 import dev.cerbos.api.v1.engine.Engine.PlanResourcesFilter.Expression;
 import dev.cerbos.api.v1.engine.Engine.PlanResourcesFilter.Expression.Operand;
-import dev.cerbos.api.v1.engine.Engine.PlanResourcesFilter.Expression.Operand.NodeCase;
 import java.util.List;
 import org.jooq.Condition;
 import org.jooq.DataType;
@@ -22,11 +29,11 @@ public final class OperandVisitor {
 
     public Condition walk(Operand operand) {
         return switch (operand.getNodeCase()) {
-            case EXPRESSION   -> walkExpression(operand.getExpression());
-            case VARIABLE     -> throw new IllegalArgumentException(
-                    "Bare variable not valid as a boolean expression: " + operand.getVariable());
-            case VALUE        -> throw new IllegalArgumentException(
-                    "Bare value not valid as a boolean expression");
+            case EXPRESSION -> walkExpression(operand.getExpression());
+            case VARIABLE ->
+                throw new IllegalArgumentException(
+                        "Bare variable not valid as a boolean expression: " + operand.getVariable());
+            case VALUE -> throw new IllegalArgumentException("Bare value not valid as a boolean expression");
             case NODE_NOT_SET -> throw new IllegalArgumentException("Empty operand");
         };
     }
@@ -69,8 +76,7 @@ public final class OperandVisitor {
             return switch (effective) {
                 case "eq" -> column.isNull();
                 case "ne" -> column.isNotNull();
-                default -> throw new IllegalArgumentException(
-                        "null only allowed with eq/ne, got: " + effective);
+                default -> throw new IllegalArgumentException("null only allowed with eq/ne, got: " + effective);
             };
         }
 
