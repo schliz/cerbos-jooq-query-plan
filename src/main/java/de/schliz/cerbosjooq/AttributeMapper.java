@@ -18,7 +18,13 @@ public final class AttributeMapper {
     }
 
     public MappingEntry resolve(String path) {
-        throw new UnsupportedOperationException("not implemented");
+        MappingEntry e = entries.get(path);
+        if (e != null) return e;
+        if (fallback != null) {
+            MappingEntry fb = fallback.apply(path);
+            if (fb != null) return fb;
+        }
+        throw new IllegalArgumentException("No mapping for: " + path);
     }
 
     public static Builder builder() {
