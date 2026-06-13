@@ -39,3 +39,8 @@ bin/
 
 ### Mac OS ###
 .DS_Store
+
+### Publishing credentials ###
+gradle.properties
+secring.gpg
+*.asc.key

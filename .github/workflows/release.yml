@@ -1,0 +1,87 @@
+name: Release to Maven Central + GitHub Packages
+
+# Triggered by pushing a tag matching v* (e.g. v0.1.0). The tag name is the
+# release version: the workflow strips the leading "v" and passes the rest to
+# Gradle as -Pversion=<x.y.z>.
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g. 0.1.0). Leave empty to use build.gradle default.'
+        required: false
+        type: string
+      publishing_type:
+        description: 'Central Portal handoff mode'
+        required: false
+        default: 'automatic'
+        type: choice
+        options:
+          - automatic
+          - user_managed
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  release:
+    name: Build, sign, publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 25 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '25'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Resolve release version
+        id: version
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            echo "value=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          elif [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            echo "value=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build + test
+        run: ./gradlew --no-daemon build
+
+      - name: Publish to Central Portal
+        env:
+          CENTRAL_PORTAL_USERNAME: ${{ secrets.CENTRAL_PORTAL_USERNAME }}
+          CENTRAL_PORTAL_PASSWORD: ${{ secrets.CENTRAL_PORTAL_PASSWORD }}
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+          SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
+          CENTRAL_PUBLISHING_TYPE: ${{ inputs.publishing_type || 'automatic' }}
+        run: |
+          ARGS=()
+          if [ -n "${{ steps.version.outputs.value }}" ]; then
+            ARGS+=("-Pversion=${{ steps.version.outputs.value }}")
+          fi
+          ./gradlew --no-daemon "${ARGS[@]}" publishToCentralPortal
+
+      - name: Publish to GitHub Packages
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+          SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
+        run: |
+          ARGS=()
+          if [ -n "${{ steps.version.outputs.value }}" ]; then
+            ARGS+=("-Pversion=${{ steps.version.outputs.value }}")
+          fi
+          ./gradlew --no-daemon "${ARGS[@]}" publishMavenJavaPublicationToGitHubPackagesRepository

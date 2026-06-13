@@ -1,10 +1,12 @@
 plugins {
     id 'java-library'
+    id 'maven-publish'
+    id 'signing'
     id 'com.diffplug.spotless' version '8.4.0'
 }
 
 group = 'de.schliz'
-version = '1.0-SNAPSHOT'
+version = '0.1.0'
 
 repositories {
     mavenCentral()
@@ -14,14 +16,23 @@ java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(25)
     }
+    withJavadocJar()
+    withSourcesJar()
 }
 
 tasks.withType(JavaCompile).configureEach {
     options.release = 17
 }
 
+tasks.withType(Javadoc).configureEach {
+    options.encoding = 'UTF-8'
+    // Sonatype only requires that the javadoc.jar exists; relax doclint so
+    // small comment issues don't fail the release build.
+    options.addStringOption('Xdoclint:none', '-quiet')
+}
+
 dependencies {
-    api 'dev.cerbos:cerbos-sdk-java:0.+'
+    api 'dev.cerbos:cerbos-sdk-java:0.18.0'
 
     compileOnly 'org.jooq:jooq:3.17.0'
     implementation 'com.google.protobuf:protobuf-java:4.28.2'
@@ -50,5 +61,145 @@ spotless {
  * Copyright (c) 2026-Present Christian Schliz <opensource@foxat.de>
  */
  """
+    }
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+
+            pom {
+                name = 'cerbos-jooq-query-plan'
+                description = 'Adapt a Cerbos PlanResources decision into a jOOQ Condition you can compose into your own SELECT. Push the policy filter into the database instead of filtering row-by-row in the application.'
+                url = 'https://github.com/schliz/cerbos-jooq-query-plan'
+
+                licenses {
+                    license {
+                        name = 'Mozilla Public License 2.0'
+                        url = 'https://www.mozilla.org/en-US/MPL/2.0/'
+                        distribution = 'repo'
+                    }
+                }
+
+                developers {
+                    developer {
+                        id = 'schliz'
+                        name = 'Christian Schliz'
+                        email = 'opensource@foxat.de'
+                        url = 'https://github.com/schliz'
+                    }
+                }
+
+                scm {
+                    connection = 'scm:git:git://github.com/schliz/cerbos-jooq-query-plan.git'
+                    developerConnection = 'scm:git:ssh://git@github.com/schliz/cerbos-jooq-query-plan.git'
+                    url = 'https://github.com/schliz/cerbos-jooq-query-plan'
+                }
+
+                issueManagement {
+                    system = 'GitHub Issues'
+                    url = 'https://github.com/schliz/cerbos-jooq-query-plan/issues'
+                }
+            }
+        }
+    }
+
+    repositories {
+        maven {
+            name = 'centralPortal'
+            // Sonatype's officially documented endpoint for the Central
+            // Publisher Portal's OSSRH Staging compatibility API.
+            // See: https://central.sonatype.org/publish/publish-portal-ossrh-staging-api/
+            url = uri('https://ossrh-staging-api.central.sonatype.com/service/local/staging/deploy/maven2/')
+            credentials {
+                username = providers.gradleProperty('centralPortalUsername').orNull
+                        ?: System.getenv('CENTRAL_PORTAL_USERNAME')
+                password = providers.gradleProperty('centralPortalPassword').orNull
+                        ?: System.getenv('CENTRAL_PORTAL_PASSWORD')
+            }
+        }
+
+        // GitHub Package Registry mirror. Credentials come from a GitHub PAT
+        // (read:packages to consume, write:packages to publish); in CI the
+        // Actions-provided GITHUB_TOKEN + GITHUB_ACTOR are used automatically.
+        maven {
+            name = 'GitHubPackages'
+            url = uri('https://maven.pkg.github.com/schliz/cerbos-jooq-query-plan')
+            credentials {
+                username = providers.gradleProperty('gpr.user').orNull ?: System.getenv('GITHUB_ACTOR')
+                password = providers.gradleProperty('gpr.token').orNull ?: System.getenv('GITHUB_TOKEN')
+            }
+        }
+    }
+}
+
+signing {
+    // Prefer in-memory ASCII-armored key (works locally and in CI). Falls back
+    // to the local gpg agent if no key material is configured
+    def signingKey = providers.gradleProperty('signingKey').orNull ?: System.getenv('SIGNING_KEY')
+    def signingPassword = providers.gradleProperty('signingPassword').orNull ?: System.getenv('SIGNING_PASSWORD')
+    if (signingKey) {
+        useInMemoryPgpKeys(signingKey, signingPassword)
+    }
+    sign publishing.publications.mavenJava
+}
+
+// Skip signing for SNAPSHOT builds and when no credentials are present so
+// `./gradlew build publishToMavenLocal` keeps working for development.
+tasks.withType(Sign).configureEach {
+    onlyIf {
+        !version.toString().endsWith('-SNAPSHOT') &&
+                (providers.gradleProperty('signingKey').isPresent() || System.getenv('SIGNING_KEY') != null)
+    }
+}
+
+tasks.register('publishToCentralPortal') {
+    group = 'publishing'
+    description = 'Upload artifacts to the OSSRH Staging API and trigger handoff to the Central Publisher Portal.'
+
+    dependsOn tasks.named('publishMavenJavaPublicationToCentralPortalRepository')
+
+    doLast {
+        def username = providers.gradleProperty('centralPortalUsername').orNull
+                ?: System.getenv('CENTRAL_PORTAL_USERNAME')
+        def password = providers.gradleProperty('centralPortalPassword').orNull
+                ?: System.getenv('CENTRAL_PORTAL_PASSWORD')
+        if (!username || !password) {
+            throw new GradleException(
+                    'Missing Central Portal credentials. Provide centralPortalUsername / centralPortalPassword as Gradle properties ' +
+                            'or CENTRAL_PORTAL_USERNAME / CENTRAL_PORTAL_PASSWORD as environment variables. ' +
+                            'Generate a token at https://central.sonatype.com/account.')
+        }
+
+        def publishingType = (providers.gradleProperty('centralPublishingType').orNull
+                ?: System.getenv('CENTRAL_PUBLISHING_TYPE')
+                ?: 'automatic')
+        def namespace = project.group.toString()
+        def auth = Base64.encoder.encodeToString("${username}:${password}".getBytes('UTF-8'))
+        def endpoint = "https://ossrh-staging-api.central.sonatype.com/manual/upload/defaultRepository/${namespace}?publishing_type=${publishingType}"
+
+        logger.lifecycle("Handing staged repository over to Central Portal (namespace=${namespace}, publishing_type=${publishingType})…")
+
+        def conn = (HttpURLConnection) new URI(endpoint).toURL().openConnection()
+        conn.requestMethod = 'POST'
+        conn.setRequestProperty('Authorization', "Bearer ${auth}")
+        conn.setRequestProperty('Accept', 'application/json')
+        conn.connectTimeout = 30_000
+        conn.readTimeout = 60_000
+
+        def code = conn.responseCode
+        def body = (code in 200..299 ? conn.inputStream : conn.errorStream)?.text ?: ''
+        logger.lifecycle("Central Portal handoff: HTTP ${code} ${body}")
+
+        if (code !in 200..299) {
+            throw new GradleException("Central Portal handoff failed: HTTP ${code} ${body}")
+        }
+
+        if (publishingType == 'automatic') {
+            logger.lifecycle('publishing_type=automatic: the Portal will validate and release to Maven Central if validation passes.')
+        } else {
+            logger.lifecycle('publishing_type=user_managed: log in to https://central.sonatype.com/publishing and click Publish.')
+        }
     }
 }
