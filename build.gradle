@@ -64,6 +64,19 @@ spotless {
     }
 }
 
+// Central Portal token, resolved once. The OSSRH Staging API authenticates with
+// a Bearer token that is base64("<tokenUser>:<tokenPassword>") — NOT Maven Basic
+// auth — so we build the header value here and reuse it for both the artifact
+// upload and the handoff POST below.
+// See https://central.sonatype.org/publish/publish-portal-ossrh-staging-api/
+def centralPortalUser = providers.gradleProperty('centralPortalUsername').orNull
+        ?: System.getenv('CENTRAL_PORTAL_USERNAME')
+def centralPortalPass = providers.gradleProperty('centralPortalPassword').orNull
+        ?: System.getenv('CENTRAL_PORTAL_PASSWORD')
+def centralPortalBearer = (centralPortalUser != null && centralPortalPass != null)
+        ? Base64.encoder.encodeToString("${centralPortalUser}:${centralPortalPass}".getBytes('UTF-8'))
+        : ''
+
 publishing {
     publications {
         mavenJava(MavenPublication) {
@@ -112,11 +125,15 @@ publishing {
             // Publisher Portal's OSSRH Staging compatibility API.
             // See: https://central.sonatype.org/publish/publish-portal-ossrh-staging-api/
             url = uri('https://ossrh-staging-api.central.sonatype.com/service/local/staging/deploy/maven2/')
-            credentials {
-                username = providers.gradleProperty('centralPortalUsername').orNull
-                        ?: System.getenv('CENTRAL_PORTAL_USERNAME')
-                password = providers.gradleProperty('centralPortalPassword').orNull
-                        ?: System.getenv('CENTRAL_PORTAL_PASSWORD')
+            // Bearer auth, not Basic: Gradle's default credentials{} block sends
+            // HTTP Basic, which this endpoint rejects with 401. Set the header
+            // explicitly instead.
+            credentials(HttpHeaderCredentials) {
+                name = 'Authorization'
+                value = "Bearer ${centralPortalBearer}"
+            }
+            authentication {
+                header(HttpHeaderAuthentication)
             }
         }
 
@@ -138,7 +155,9 @@ signing {
     // Prefer in-memory ASCII-armored key (works locally and in CI). Falls back
     // to the local gpg agent if no key material is configured
     def signingKey = providers.gradleProperty('signingKey').orNull ?: System.getenv('SIGNING_KEY')
-    def signingPassword = providers.gradleProperty('signingPassword').orNull ?: System.getenv('SIGNING_PASSWORD')
+    // Default to an empty passphrase so a passphrase-less key signs correctly
+    // (useInMemoryPgpKeys rejects a null password).
+    def signingPassword = providers.gradleProperty('signingPassword').orNull ?: System.getenv('SIGNING_PASSWORD') ?: ''
     if (signingKey) {
         useInMemoryPgpKeys(signingKey, signingPassword)
     }
